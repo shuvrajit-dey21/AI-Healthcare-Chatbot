@@ -38,12 +38,19 @@ except LookupError:
 # Configuration and Environment Setup
 try:
     HUGGINGFACE_API_KEY = config('HUGGINGFACE_API_KEY', default='')
-    MODEL_NAME = config('MODEL_NAME', default='google/flan-t5-base')
-    MAX_TOKENS = config('MAX_TOKENS', default=150, cast=int)
-    TEMPERATURE = config('TEMPERATURE', default=0.7, cast=float)
+    # Primary model: Medical-specific BERT model
+    MODEL_NAME = config('MODEL_NAME', default='microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract')
+    # Backup models in order of preference
+    BACKUP_MODELS = [
+        'google/flan-t5-large',  # Better general language understanding
+        'facebook/bart-large-cnn',  # Good at structured responses
+        'microsoft/BioGPT-Large'  # Specialized for biomedical text
+    ]
+    MAX_TOKENS = config('MAX_TOKENS', default=500, cast=int)  # Increased for more detailed responses
+    TEMPERATURE = config('TEMPERATURE', default=0.3, cast=float)  # Lower temperature for more focused responses
     APP_TITLE = config('APP_TITLE', default='AI Healthcare Assistant')
     DISCLAIMER = config('DISCLAIMER', default='⚠️ Always consult a healthcare provider for medical advice.')
-    ENABLE_ANALYTICS = config('ENABLE_ANALYTICS', default=False, cast=bool)
+    ENABLE_ANALYTICS = config('ENABLE_ANALYTICS', default=True, cast=bool)
     ANALYTICS_FILE = config('ANALYTICS_FILE', default='usage_analytics.json')
 except UndefinedValueError:
     st.error("Environment variables not set properly. Please check your .env file.")
@@ -63,6 +70,46 @@ if "feedback_given" not in st.session_state:
 
 if "theme" not in st.session_state:
     st.session_state.theme = "light"
+
+# Medical knowledge base - key medical topics and their information
+MEDICAL_KNOWLEDGE = {
+    "diabetes": {
+        "overview": "Diabetes is a chronic condition characterized by high levels of glucose in the blood due to inadequate insulin production or insulin resistance. There are several types of diabetes, with Type 1, Type 2, and gestational diabetes being the most common.",
+        "symptoms": ["Increased thirst", "Frequent urination", "Unexplained weight loss", "Extreme hunger", "Blurred vision", "Fatigue", "Slow-healing sores", "Frequent infections", "Tingling in hands/feet"],
+        "management": ["Regular blood glucose monitoring", "Medication adherence (insulin or oral medications)", "Balanced diet with carbohydrate monitoring", "Regular physical activity", "Regular medical check-ups", "Foot care", "Stress management"],
+        "complications": ["Cardiovascular disease", "Neuropathy (nerve damage)", "Nephropathy (kidney damage)", "Retinopathy (eye damage)", "Foot damage that may lead to amputation", "Skin conditions", "Hearing impairment", "Alzheimer's disease"]
+    },
+    "hypertension": {
+        "overview": "Hypertension, or high blood pressure, is a condition where the force of blood against artery walls is consistently too high. It's often called the 'silent killer' because it typically has no symptoms but significantly increases the risk of heart disease and stroke.",
+        "symptoms": ["Often asymptomatic", "Headaches (in severe cases)", "Shortness of breath", "Nosebleeds", "Visual changes", "Dizziness", "Chest pain", "Blood in urine"],
+        "management": ["Regular blood pressure monitoring", "Medication adherence", "Low sodium diet (less than 2,300mg daily)", "Regular physical activity (150 minutes per week)", "Stress management", "Limited alcohol consumption", "Weight management", "DASH diet approach"],
+        "complications": ["Heart attack", "Stroke", "Heart failure", "Kidney damage or failure", "Vision loss", "Metabolic syndrome", "Vascular dementia", "Aneurysm"]
+    },
+    "asthma": {
+        "overview": "Asthma is a chronic respiratory condition characterized by inflammation and narrowing of the airways, leading to breathing difficulties. It affects the bronchial tubes that carry air to and from the lungs and can range from mild to severe.",
+        "symptoms": ["Shortness of breath", "Chest tightness or pain", "Wheezing when exhaling", "Coughing, especially at night or early morning", "Difficulty sleeping due to breathing problems", "Fatigue", "Symptoms that worsen with respiratory infections"],
+        "management": ["Identifying and avoiding triggers", "Using prescribed inhalers correctly (controller and rescue medications)", "Following asthma action plan", "Regular medical check-ups", "Breathing exercises", "Maintaining healthy weight", "Getting vaccinated against flu and pneumonia"],
+        "complications": ["Severe asthma attacks requiring emergency care", "Respiratory failure", "Pneumonia and other respiratory infections", "Collapsed lung (pneumothorax)", "Airway remodeling (permanent narrowing)", "Side effects from medications"]
+    },
+    "heart_disease": {
+        "overview": "Heart disease refers to several conditions affecting the heart, with coronary artery disease being the most common. It involves narrowed or blocked blood vessels that can lead to heart attack, chest pain, or stroke.",
+        "symptoms": ["Chest pain, pressure or discomfort (angina)", "Shortness of breath", "Pain or numbness in extremities", "Pain in neck, jaw, throat, upper abdomen or back", "Fluttering in chest (palpitations)", "Racing heartbeat", "Slow heartbeat", "Lightheadedness", "Dizziness", "Fainting"],
+        "management": ["Medication adherence", "Healthy diet low in saturated fats and sodium", "Regular physical activity", "Smoking cessation", "Limited alcohol consumption", "Stress management", "Weight management", "Regular health screenings"],
+        "complications": ["Heart attack", "Heart failure", "Stroke", "Aneurysm", "Peripheral artery disease", "Sudden cardiac arrest", "Heart valve problems"]
+    },
+    "depression": {
+        "overview": "Depression (major depressive disorder) is a common but serious mood disorder that causes persistent feelings of sadness and loss of interest. It affects how you feel, think, and handle daily activities and can lead to a variety of emotional and physical problems.",
+        "symptoms": ["Persistent sad, anxious, or 'empty' mood", "Feelings of hopelessness or pessimism", "Irritability", "Feelings of guilt or worthlessness", "Loss of interest in hobbies and activities", "Decreased energy or fatigue", "Moving or talking slowly", "Difficulty concentrating or making decisions", "Insomnia or oversleeping", "Appetite or weight changes", "Thoughts of death or suicide"],
+        "management": ["Professional therapy (cognitive behavioral therapy, interpersonal therapy)", "Medication (antidepressants)", "Regular physical activity", "Maintaining social connections", "Stress management techniques", "Sleep hygiene", "Avoiding alcohol and drugs", "Establishing routines"],
+        "complications": ["Anxiety disorders", "Substance abuse", "Physical health problems", "Social isolation", "Self-harm or suicidal thoughts", "Work or school problems", "Relationship difficulties", "Reduced quality of life"]
+    },
+    "arthritis": {
+        "overview": "Arthritis refers to inflammation of one or more joints, causing pain and stiffness that typically worsen with age. The two most common types are osteoarthritis (breakdown of cartilage) and rheumatoid arthritis (autoimmune disorder).",
+        "symptoms": ["Joint pain", "Stiffness", "Swelling", "Redness", "Decreased range of motion", "Morning stiffness", "Fatigue", "Warmth in the joint", "Joint deformity (in severe cases)"],
+        "management": ["Physical therapy", "Medication for pain and inflammation", "Weight management", "Regular, gentle exercise", "Hot and cold therapy", "Assistive devices", "Joint protection techniques", "Surgery in advanced cases"],
+        "complications": ["Joint deformity", "Reduced mobility", "Difficulty performing daily tasks", "Work disability", "Metabolic disorders", "Cardiovascular disease (especially with rheumatoid arthritis)", "Mental health issues like depression"]
+    }
+}
 
 # Analytics functions
 def log_interaction(user_input, response, feedback=None):
@@ -120,27 +167,142 @@ def display_emergency_message():
 
 def format_ai_response(text):
     """Format and clean up the AI-generated response"""
+    if not text or len(text.strip()) < 10:
+        return "I apologize, but I need to provide a better answer. Please try asking your question again."
+
     # Remove any potential system message or prompt remnants
-    text = re.sub(r'^Assistant:|^AI:', '', text).strip()
+    text = re.sub(r'^(Assistant:|AI:|System:)', '', text, flags=re.IGNORECASE).strip()
     
-    # Ensure proper spacing after punctuation
-    text = re.sub(r'([.!?])([A-Za-z])', r'\1 \2', text)
+    # Remove any template structures that might be echoed
+    template_patterns = [
+        r'1\.\s*Clear explanation of the medical topic.*?5\.\s*When to seek professional medical help',
+        r'1\.\s*Comprehensive and well-structured.*?professional medical advice\.',
+        r'Please provide a detailed response about this medical topic\.',
+        r'Please provide a detailed, step-by-step response that includes:.*?When to seek professional medical help',
+        r'Your responses should be:.*?professional medical advice\.',
+        r'Remember to:.*?medical accuracy\.'
+    ]
     
-    # Ensure proper formatting for lists
-    text = re.sub(r'(?m)^(\d+)\.(?! )', r'\1. ', text)
-    text = re.sub(r'(?m)^[•*-](?! )', r'• ', text)
+    for pattern in template_patterns:
+        text = re.sub(pattern, '', text, flags=re.DOTALL).strip()
     
-    # Add proper line breaks between sections
-    text = re.sub(r'([.!?])\s*(\d+\.)', r'\1\n\n\2', text)
+    # Fix common formatting issues
+    text = re.sub(r'\s*\n\s*\n\s*\n+', '\n\n', text)  # Remove excessive newlines
+    text = re.sub(r'(?<=[.!?])\s*(?=[A-Z])', '\n\n', text)  # Add proper line breaks between sentences
+    text = re.sub(r'(?m)^\s*[-•*]\s*', '• ', text)  # Standardize bullet points
+    text = re.sub(r'(?m)^\s*(\d+)\.\s*', r'\1. ', text)  # Fix numbered lists
     
-    # Ensure consistent bullet point formatting
-    text = re.sub(r'(?m)^[-*](?! )', '• ', text)
+    # Ensure proper spacing
+    text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with single space
+    text = re.sub(r'([.!?])\s*([A-Z])', r'\1\n\n\2', text)  # Add line breaks between sentences
+    text = re.sub(r'([.!?])\s*(\d+\.)', r'\1\n\n\2', text)  # Add line breaks before numbered lists
+    text = re.sub(r'([.!?])\s*(•)', r'\1\n\n\2', text)  # Add line breaks before bullet points
     
-    # Add disclaimer if not present
-    if not any(phrase in text.lower() for phrase in ['consult', 'healthcare provider', 'medical professional']):
-        text += "\n\nRemember: This information is for educational purposes only. Always consult with a healthcare professional for personalized medical advice."
+    # Fix common punctuation issues
+    text = re.sub(r'\s+([.,!?])', r'\1', text)  # Remove spaces before punctuation
+    text = re.sub(r'([.,!?])(?=[^\s])', r'\1 ', text)  # Add spaces after punctuation
     
-    return text.strip()
+    # Ensure proper list formatting
+    lines = text.split('\n')
+    formatted_lines = []
+    in_list = False
+    
+    for line in lines:
+        line = line.strip()
+        if line:
+            # Check if line is a list item
+            if re.match(r'^[•\-*]|^\d+\.', line):
+                if not in_list:
+                    formatted_lines.append('')  # Add space before list starts
+                    in_list = True
+            else:
+                if in_list:
+                    formatted_lines.append('')  # Add space after list ends
+                    in_list = False
+            formatted_lines.append(line)
+    
+    text = '\n'.join(formatted_lines).strip()
+    
+    # Add medical disclaimer if not present
+    disclaimer_phrases = ['consult', 'healthcare provider', 'medical professional', 'doctor']
+    if not any(phrase in text.lower() for phrase in disclaimer_phrases):
+        text += "\n\nPlease note: This information is for educational purposes only. Always consult with a healthcare professional for personalized medical advice."
+    
+    # Final cleanup
+    text = text.strip()
+    text = re.sub(r'\n{3,}', '\n\n', text)  # Remove excessive blank lines
+    
+    # If the text is too short after cleaning
+    if len(text.strip()) < 50:
+        return "I apologize, but I need to provide a more detailed answer. Please try asking your question again."
+    
+    return text
+
+def enhance_medical_response(response, query):
+    """Enhance the medical response with specific information from our knowledge base"""
+    # Check if any key medical topics are mentioned in the query
+    query_lower = query.lower()
+    
+    # If the response is already substantial (more than 500 characters), don't add too much more
+    if len(response) > 500:
+        add_details = False
+    else:
+        add_details = True
+    
+    # Look for medical terms in the query and response
+    for topic, info in MEDICAL_KNOWLEDGE.items():
+        if topic in query_lower or any(topic in response.lower() for topic in info["overview"].lower().split()[:3]):
+            # Check what aspect of the topic is being asked
+            if any(term in query_lower for term in ["symptom", "sign", "feel", "experience", "suffer"]):
+                if add_details:
+                    symptoms_text = "\n\nKey symptoms of " + topic + " include:\n" + "\n".join([f"• {symptom}" for symptom in info["symptoms"]])
+                    if symptoms_text not in response:
+                        response += symptoms_text
+                elif not any(symptom.lower() in response.lower() for symptom in info["symptoms"][:2]):
+                    # Even for long responses, add a brief mention if symptoms aren't covered
+                    brief_symptoms = ", ".join(info["symptoms"][:3]) + ", and others"
+                    if brief_symptoms not in response:
+                        response += f"\n\nCommon symptoms include {brief_symptoms}."
+            
+            elif any(term in query_lower for term in ["manage", "treat", "control", "therapy", "cure", "medication", "drug", "medicine"]):
+                if add_details:
+                    management_text = "\n\nManagement approaches for " + topic + " include:\n" + "\n".join([f"• {approach}" for approach in info["management"]])
+                    if management_text not in response:
+                        response += management_text
+                elif not any(approach.lower() in response.lower() for approach in info["management"][:2]):
+                    brief_management = ", ".join(info["management"][:3]) + ", and other approaches"
+                    if brief_management not in response:
+                        response += f"\n\nKey management strategies include {brief_management}."
+            
+            elif any(term in query_lower for term in ["complication", "risk", "danger", "problem", "consequence"]):
+                if add_details:
+                    complications_text = "\n\nPossible complications of " + topic + " include:\n" + "\n".join([f"• {complication}" for complication in info["complications"]])
+                    if complications_text not in response:
+                        response += complications_text
+                elif not any(complication.lower() in response.lower() for complication in info["complications"][:2]):
+                    brief_complications = ", ".join(info["complications"][:3]) + ", and other complications"
+                    if brief_complications not in response:
+                        response += f"\n\nSerious complications can include {brief_complications}."
+            
+            elif any(term in query_lower for term in ["what is", "define", "overview", "about", "explain", "description"]):
+                if info["overview"] not in response:
+                    # Always include the overview if it's a definitional question
+                    if not any(word in response.lower() for word in info["overview"].lower().split()[:10]):
+                        response = info["overview"] + "\n\n" + response
+            
+            # If the query seems general, provide an overview and brief symptoms
+            elif not any(specific in query_lower for specific in ["symptom", "manage", "treat", "complication", "risk", "what is"]):
+                if not any(word in response.lower() for word in info["overview"].lower().split()[:10]):
+                    response = info["overview"] + "\n\n" + response
+                if add_details and not any(symptom.lower() in response.lower() for symptom in info["symptoms"][:2]):
+                    brief_symptoms = ", ".join(info["symptoms"][:3]) + ", and others"
+                    response += f"\n\nCommon symptoms include {brief_symptoms}."
+    
+    # If the response doesn't already have a note about seeing a healthcare professional, add one
+    if not any(phrase in response.lower() for phrase in ['consult a healthcare', 'consult with a healthcare', 'consult your doctor', 'see a doctor', 'talk to your doctor']):
+        response += "\n\nAlways consult with a healthcare professional for personalized medical advice and treatment options."
+    
+    return response
 
 def analyze_query(query):
     """
@@ -191,108 +353,161 @@ def analyze_query(query):
     main_topic = None
     subtopic = None
     
-    # Enhanced topic detection
+    # Medical topics detection
     topics = {
         'covid': {
             'keywords': ['covid', 'coronavirus', 'sars-cov-2', 'pandemic'],
             'subtopics': {
                 'symptoms': ['symptom', 'sign', 'feel'],
                 'prevention': ['prevent', 'protect', 'avoid'],
-                'treatment': ['treat', 'cure', 'medicine'],
-                'testing': ['test', 'positive', 'negative'],
-                'vaccination': ['vaccine', 'shot', 'booster']
+                'treatment': ['treat', 'cure', 'manage', 'medication', 'drug', 'therapy'],
+                'testing': ['test', 'diagnose', 'detect'],
+                'vaccine': ['vaccine', 'vaccination', 'shot', 'booster']
+            }
+        },
+        'diabetes': {
+            'keywords': ['diabetes', 'blood sugar', 'insulin', 'hyperglycemia', 'diabetic'],
+            'subtopics': {
+                'symptoms': ['symptom', 'sign', 'feel'],
+                'management': ['manage', 'control', 'monitor', 'regulate'],
+                'complications': ['complication', 'risk', 'danger', 'problem'],
+                'prevention': ['prevent', 'avoid', 'reduce risk'],
+                'types': ['type', 'kind', 'classification']
+            }
+        },
+        'heart_health': {
+            'keywords': ['heart', 'cardiac', 'cardiovascular', 'blood pressure', 'hypertension', 'cholesterol'],
+            'subtopics': {
+                'symptoms': ['symptom', 'sign', 'feel'],
+                'prevention': ['prevent', 'avoid', 'reduce risk'],
+                'risk_factors': ['risk', 'factor', 'cause', 'contribute'],
+                'treatment': ['treat', 'manage', 'medication', 'drug', 'therapy'],
+                'diagnosis': ['diagnose', 'test', 'detect', 'identify']
             }
         },
         'mental_health': {
-            'keywords': ['anxiety', 'depression', 'stress', 'mental', 'psychological'],
+            'keywords': ['mental health', 'anxiety', 'depression', 'stress', 'psychological', 'psychiatric'],
             'subtopics': {
-                'symptoms': ['feeling', 'symptom', 'sign'],
-                'coping': ['cope', 'manage', 'deal'],
-                'treatment': ['therapy', 'counseling', 'medication'],
-                'prevention': ['prevent', 'avoid', 'reduce']
+                'symptoms': ['symptom', 'sign', 'feel'],
+                'treatment': ['treat', 'therapy', 'counseling', 'medication'],
+                'coping': ['cope', 'manage', 'deal with', 'self-care'],
+                'resources': ['resource', 'help', 'support', 'service'],
+                'types': ['type', 'kind', 'disorder', 'condition']
             }
         },
         'nutrition': {
-            'keywords': ['diet', 'food', 'nutrition', 'eating', 'meal'],
+            'keywords': ['nutrition', 'diet', 'food', 'eating', 'nutrient'],
             'subtopics': {
                 'healthy_eating': ['healthy', 'balanced', 'nutritious'],
-                'weight_management': ['weight', 'calories', 'loss'],
-                'special_diets': ['vegan', 'vegetarian', 'keto', 'paleo'],
-                'supplements': ['vitamin', 'mineral', 'supplement']
+                'weight_management': ['weight', 'lose', 'gain', 'maintain'],
+                'special_diets': ['vegan', 'vegetarian', 'keto', 'paleo', 'gluten-free', 'dairy-free'],
+                'supplements': ['supplement', 'vitamin', 'mineral', 'protein'],
+                'conditions': ['condition', 'disease', 'disorder', 'health']
             }
         },
         'exercise': {
-            'keywords': ['exercise', 'workout', 'fitness', 'training'],
+            'keywords': ['exercise', 'workout', 'fitness', 'physical activity', 'sport'],
             'subtopics': {
-                'cardio': ['cardio', 'aerobic', 'running', 'swimming'],
-                'strength': ['strength', 'weight', 'muscle'],
-                'flexibility': ['stretch', 'yoga', 'flexibility'],
-                'planning': ['plan', 'schedule', 'routine']
+                'cardio': ['cardio', 'aerobic', 'cardiovascular', 'running', 'jogging', 'swimming', 'cycling'],
+                'strength': ['strength', 'resistance', 'weight', 'muscle', 'lifting'],
+                'flexibility': ['flexibility', 'stretching', 'mobility', 'yoga', 'pilates'],
+                'intensity': ['intensity', 'level', 'difficulty', 'hard', 'easy', 'moderate'],
+                'benefits': ['benefit', 'advantage', 'health', 'improve']
             }
         },
         'sleep': {
-            'keywords': ['sleep', 'insomnia', 'rest', 'nap'],
+            'keywords': ['sleep', 'insomnia', 'sleep apnea', 'snoring', 'rest', 'fatigue'],
             'subtopics': {
-                'quality': ['quality', 'better', 'improve'],
-                'disorders': ['disorder', 'apnea', 'insomnia'],
-                'habits': ['habit', 'routine', 'schedule'],
-                'environment': ['bedroom', 'environment', 'noise', 'light']
+                'quality': ['quality', 'good', 'better', 'improve'],
+                'disorders': ['disorder', 'problem', 'condition', 'issue'],
+                'habits': ['habit', 'routine', 'hygiene', 'schedule'],
+                'stages': ['stage', 'cycle', 'REM', 'deep', 'light'],
+                'factors': ['factor', 'affect', 'influence', 'impact']
             }
         }
     }
     
-    # Find main topic
+    # Check if query matches any topics and subtopics
     for topic, data in topics.items():
-        if any(keyword in query for keyword in data['keywords']):
-            main_topic = topic
-            # Find subtopic
-            for sub, keywords in data['subtopics'].items():
-                if any(keyword in query for keyword in keywords):
-                    subtopic = sub
-                    break
+        for keyword in data['keywords']:
+            if keyword in query:
+                main_topic = topic
+                
+                # Check for subtopics if main topic is identified
+                if main_topic:
+                    for sub, keywords in data['subtopics'].items():
+                        for keyword in keywords:
+                            if keyword in query:
+                                subtopic = sub
+                                break
+                        if subtopic:
+                            break
+                break
+        if main_topic:
             break
     
     return main_topic, subtopic, context
+
+def get_model_response(prompt, model_name):
+    """Get response from a specific model"""
+    try:
+        response = requests.post(
+            f"https://api-inference.huggingface.co/models/{model_name}",
+            headers={"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"},
+            json={
+                "inputs": prompt,
+                "parameters": {
+                    "max_length": MAX_TOKENS,
+                    "temperature": TEMPERATURE,
+                    "top_p": 0.95,
+                    "do_sample": True,
+                    "top_k": 50,
+                    "repetition_penalty": 1.2,
+                    "num_return_sequences": 1
+                }
+            },
+            timeout=20
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0].get("generated_text", "")
+            elif isinstance(result, dict):
+                return result.get("generated_text", "")
+    except Exception as e:
+        st.warning(f"Error with model {model_name}: {str(e)}")
+    return None
 
 def get_chatbot_response(user_input, uploaded_file=None):
     """Get a response using HuggingFace's inference API or fallback to a rule-based system"""
     try:
         # Prepare the prompt with system message and context
-        system_message = """You are an advanced healthcare AI assistant trained to provide detailed, accurate medical information. 
-Your responses should be:
-1. Comprehensive and well-structured
-2. Evidence-based and up-to-date
-3. Easy to understand with step-by-step explanations
-4. Include relevant medical context and background
-5. Always emphasize the importance of consulting healthcare professionals
+        system_message = """You are a medical AI assistant trained to provide accurate healthcare information. 
+Focus on providing:
+1. Clear, evidence-based medical information
+2. Specific symptoms, causes, and treatments when relevant
+3. Prevention and management strategies
+4. References to medical guidelines when applicable
+5. Clear indicators for when to seek professional medical help
 
-Remember to:
-- Break down complex medical concepts
-- Use bullet points and numbered lists for clarity
-- Provide specific examples when relevant
-- Include preventive measures and lifestyle recommendations
-- Always maintain medical accuracy while being accessible
-
-Important: Always emphasize that you're not a replacement for professional medical advice."""
+Important: Maintain medical accuracy while being accessible to general audience."""
         
         # Build conversation history
         conversation_history = []
-        for message in st.session_state.messages[-3:]:  # Include last 3 messages for context
+        for message in st.session_state.messages[-3:]:
             prefix = "User: " if message["role"] == "user" else "Assistant: "
             conversation_history.append(f"{prefix}{message['content']}")
         
-        # Format conversation history as a string
         conversation_str = "\n".join(conversation_history)
         
         # Prepare content
         content = user_input
-        
-        # If there's an uploaded file, include its context
         if uploaded_file is not None:
             file_content = extract_text_from_file(uploaded_file)
             content += f"\n\nContext from uploaded document: {file_content}"
             
-        # Create the full prompt with better structure
+        # Create the full prompt
         full_prompt = f"""{system_message}
 
 Previous Conversation:
@@ -300,79 +515,39 @@ Previous Conversation:
 
 User Question: {content}
 
-Please provide a detailed, step-by-step response that includes:
-1. Clear explanation of the topic
-2. Relevant medical context
-3. Practical recommendations
-4. Important considerations
-5. When to seek professional help"""
-        
-        # Try using HuggingFace API if API key is provided
+Provide a detailed medical response:"""
+
         if HUGGINGFACE_API_KEY:
-            try:
-                st.info("Connecting to HuggingFace API for optimal response...")
-                response = requests.post(
-                    f"https://api-inference.huggingface.co/models/{MODEL_NAME}",
-                    headers={"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"},
-                    json={
-                        "inputs": full_prompt,
-                        "parameters": {
-                            "max_length": MAX_TOKENS,
-                            "temperature": TEMPERATURE,
-                            "top_p": 0.95,
-                            "do_sample": True,
-                            "top_k": 50,
-                            "repetition_penalty": 1.2,
-                            "num_return_sequences": 1,
-                            "length_penalty": 1.5
-                        }
-                    },
-                    timeout=30  # Increased timeout for longer responses
-                )
+            # Try primary model first
+            st.info("Generating medical response...")
+            response = get_model_response(full_prompt, MODEL_NAME)
+            
+            if response:
+                formatted_response = format_ai_response(response)
+                if len(formatted_response) > 50:
+                    return enhance_medical_response(formatted_response, content)
+            
+            # Try backup models in sequence
+            for backup_model in BACKUP_MODELS:
+                st.info(f"Trying alternative medical model...")
+                response = get_model_response(full_prompt, backup_model)
                 
-                # Check if the response is valid
-                if response.status_code == 200:
-                    result = response.json()
-                    
-                    # Handle different response formats based on model type
-                    if isinstance(result, list) and len(result) > 0 and "generated_text" in result[0]:
-                        # Some models return a list of outputs
-                        generated_text = result[0]["generated_text"].replace(full_prompt, "").strip()
-                        if generated_text:  # Check if we got a meaningful response
-                            # Post-process the response to ensure proper formatting
-                            formatted_response = format_ai_response(generated_text)
-                            return formatted_response
-                    elif isinstance(result, dict) and "generated_text" in result:
-                        # Some models return a single output
-                        generated_text = result["generated_text"].replace(full_prompt, "").strip()
-                        if generated_text:  # Check if we got a meaningful response
-                            # Post-process the response to ensure proper formatting
-                            formatted_response = format_ai_response(generated_text)
-                            return formatted_response
-                    
-                    # If we reach here, we didn't get a useful response from the API
-                    st.warning("The model returned an empty or invalid response. Using fallback system...")
-                elif response.status_code == 503:
-                    # Model is still loading
-                    st.warning("The HuggingFace model is still loading. Using fallback response system...")
-                else:
-                    # Other errors
-                    st.warning(f"API Error (Status code: {response.status_code}). Using fallback response system...")
-            except requests.exceptions.Timeout:
-                st.warning("The request to the HuggingFace model timed out. Using fallback response system...")
-            except requests.exceptions.ConnectionError:
-                st.warning("Connection error. Check your internet connection. Using fallback response system...")
-            except Exception as e:
-                st.warning(f"HuggingFace API error: {str(e)}. Using fallback response system...")
+                if response:
+                    formatted_response = format_ai_response(response)
+                    if len(formatted_response) > 50:
+                        return enhance_medical_response(formatted_response, content)
+            
+            st.warning("Models unavailable. Using built-in knowledge system.")
         else:
-            st.info("No HuggingFace API key provided. Using built-in healthcare knowledge system.")
+            st.info("No API key provided. Using built-in healthcare knowledge system.")
         
-        # Fallback to our enhanced rule-based response system
-        return generate_fallback_response(content)
+        # Fallback to rule-based system
+        fallback_response = generate_fallback_response(content)
+        return enhance_medical_response(fallback_response, content)
         
     except Exception as e:
         st.error(f"Error getting response: {str(e)}")
-        return "I'm having trouble connecting to my knowledge base right now. Please try again in a moment."
+        return "I apologize, but I'm having trouble accessing my knowledge base. Please try again in a moment."
 
 def generate_fallback_response(query):
     """Generate a response using the built-in healthcare knowledge system"""
@@ -382,111 +557,121 @@ def generate_fallback_response(query):
     responses = {
         'covid': {
             'symptoms': [
-                "Common COVID-19 symptoms include fever, cough, and fatigue. {severity} {history}",
-                "COVID-19 typically presents with respiratory symptoms like shortness of breath and loss of taste/smell. {severity} {history}",
-                "Initial COVID-19 signs often include fever, dry cough, and tiredness. {severity} {history}"
+                "Common COVID-19 symptoms include fever, cough, fatigue, and loss of taste or smell. Most symptoms appear 2-14 days after exposure. {severity} {history}",
+                "COVID-19 typically presents with respiratory symptoms like shortness of breath, sore throat, and nasal congestion, along with fever and fatigue. {severity} {history}",
+                "Initial COVID-19 signs often include fever, dry cough, and tiredness, which may progress to more severe symptoms in some cases. {severity} {history}"
             ],
             'prevention': [
-                "Key COVID-19 prevention measures include vaccination, wearing masks, and maintaining social distance. {temporal}",
-                "To prevent COVID-19: wash hands frequently, avoid crowded spaces, and ensure good ventilation. {temporal}",
-                "Protect yourself from COVID-19 by staying up to date with vaccines and following local health guidelines. {temporal}"
+                "Key COVID-19 prevention measures include staying up-to-date with vaccines, wearing masks in crowded indoor settings, maintaining good hand hygiene, and ensuring adequate ventilation. {temporal}",
+                "To prevent COVID-19: wash hands frequently with soap for at least 20 seconds, wear well-fitting masks in public settings, maintain social distance, and get vaccinated and boosted as recommended. {temporal}",
+                "Protect yourself from COVID-19 by getting vaccinated, avoiding crowded poorly ventilated spaces, washing hands regularly, and monitoring your health for symptoms. {temporal}"
+            ],
+            'treatment': [
+                "COVID-19 treatment depends on severity. Mild cases can be managed at home with rest, hydration, and over-the-counter fever reducers. Several antiviral medications are available for those at high risk. {severity} {demographic}",
+                "For most people with mild COVID-19, supportive care focused on symptom relief is sufficient. High-risk individuals may benefit from antiviral treatments if started early. {severity} {demographic}",
+                "Treatment options for COVID-19 now include oral antivirals like Paxlovid for high-risk patients, while severe cases may require hospitalization, oxygen therapy, or other interventions. {severity} {demographic}"
+            ]
+        },
+        'diabetes': {
+            'symptoms': [
+                "Common diabetes symptoms include increased thirst, frequent urination, unexplained weight loss, extreme hunger, blurred vision, fatigue, and slow-healing sores. {severity} {history}",
+                "Type 1 diabetes typically develops rapidly with symptoms including excessive thirst, frequent urination, extreme hunger, and unintended weight loss despite increased appetite. {severity} {history}",
+                "Type 2 diabetes signs often develop gradually and may include increased thirst and urination, fatigue, blurred vision, numbness in extremities, and recurring infections. {severity} {history}"
+            ],
+            'management': [
+                "Diabetes management involves regular blood sugar monitoring, medication adherence, consistent carbohydrate intake, regular physical activity, and stress management. Working with a healthcare team to create a personalized plan is essential. {temporal}",
+                "Effective diabetes control requires monitoring blood glucose levels regularly, taking medications as prescribed, maintaining consistent meal timing and content, engaging in regular exercise, and attending scheduled medical check-ups. {temporal}",
+                "Managing diabetes successfully involves a combination of blood glucose monitoring, medication management, healthy eating patterns, regular physical activity, and routine medical care with specialists including endocrinologists and certified diabetes educators. {temporal}"
+            ],
+            'complications': [
+                "Diabetes complications can affect multiple body systems, including cardiovascular disease, nerve damage (neuropathy), kidney damage (nephropathy), eye damage (retinopathy), and foot problems that may lead to serious infections. {severity} {history}",
+                "Long-term complications of diabetes include increased risk of heart attack, stroke, vision problems, kidney failure, and nerve damage leading to pain or numbness, particularly in the extremities. {severity} {history}",
+                "Poorly controlled diabetes can lead to serious complications including cardiovascular disease, kidney disease requiring dialysis, vision loss, nerve damage, and foot problems that may lead to amputation. Tight glucose control helps reduce these risks. {severity} {history}"
             ]
         },
         'mental_health': {
             'symptoms': [
-                "Common mental health symptoms include changes in mood, sleep patterns, and energy levels. {severity} {history}",
-                "Mental health concerns often manifest as anxiety, persistent sadness, or difficulty concentrating. {severity} {history}",
-                "Watch for changes in appetite, sleep, and daily functioning as signs of mental health issues. {severity} {history}"
+                "Common mental health symptoms include persistent changes in mood, sleep patterns, energy levels, concentration, appetite, and interest in previously enjoyed activities. {severity} {history}",
+                "Mental health concerns often manifest as anxiety, persistent sadness, irritability, social withdrawal, difficulty concentrating, and changes in sleep and eating patterns. {severity} {history}",
+                "Watch for changes in daily functioning, mood, energy levels, sleep patterns, appetite, concentration, and social engagement as potential signs of mental health issues. {severity} {history}"
             ],
             'treatment': [
-                "Mental health treatment options include therapy, counseling, and sometimes medication. {demographic}",
-                "Professional mental health care can involve different approaches like CBT, mindfulness, or group therapy. {demographic}",
-                "Treatment plans are personalized and may combine different therapeutic approaches. {demographic}"
+                "Mental health treatment typically involves a combination of psychotherapy (like cognitive-behavioral therapy), sometimes medication, lifestyle changes, social support, and self-care practices tailored to the individual's specific condition and needs. {demographic}",
+                "Evidence-based mental health treatments include various forms of therapy (such as CBT, DBT, or IPT), psychiatric medications when appropriate, support groups, mindfulness practices, and lifestyle modifications addressing sleep, nutrition, and exercise. {demographic}",
+                "Treatment plans for mental health conditions are personalized and may combine different therapeutic approaches including individual therapy, group therapy, medication management, stress-reduction techniques, and addressing lifestyle factors like sleep hygiene and physical activity. {demographic}"
+            ],
+            'coping': [
+                "Healthy coping strategies for mental health include regular physical activity, maintaining social connections, practicing mindfulness or meditation, getting adequate sleep, limiting alcohol and caffeine, and seeking professional help when needed. {temporal}",
+                "To cope with mental health challenges, consider developing a routine that includes physical activity, relaxation techniques, adequate sleep, healthy eating, limited social media exposure, and regular social interaction with supportive people. {temporal}",
+                "Effective coping mechanisms include practicing deep breathing exercises, progressive muscle relaxation, journaling, engaging in enjoyable activities, maintaining social connections, setting realistic goals, and establishing healthy boundaries. {temporal}"
             ]
         },
         'nutrition': {
             'healthy_eating': [
-                "A balanced diet should include a variety of fruits, vegetables, whole grains, and lean proteins. {temporal}",
-                "Focus on eating whole, unprocessed foods and maintaining regular meal times. {temporal}",
-                "Consider incorporating different colored fruits and vegetables for a range of nutrients. {temporal}"
+                "A balanced diet should include a variety of fruits, vegetables, whole grains, lean proteins, and healthy fats while limiting added sugars, sodium, and highly processed foods. Aim for colorful, diverse foods at each meal. {temporal}",
+                "Focus on eating whole, unprocessed foods including a rainbow of fruits and vegetables, whole grains like brown rice and quinoa, lean proteins such as fish and legumes, and healthy fats from sources like avocados, nuts, and olive oil. {temporal}",
+                "Healthy eating involves consuming appropriate portions of nutrient-dense foods including plenty of fruits, vegetables, whole grains, lean proteins, and healthy fats, while staying hydrated and limiting foods high in added sugars, sodium, and unhealthy fats. {temporal}"
             ],
             'weight_management': [
-                "Sustainable weight management involves balanced nutrition and regular physical activity. {demographic}",
-                "Focus on creating healthy, sustainable habits rather than quick fixes. {demographic}",
-                "Consider tracking your food intake and exercise to understand your patterns better. {demographic}"
+                "Sustainable weight management involves balanced nutrition, regular physical activity, adequate sleep, stress management, and behavioral strategies rather than restrictive short-term diets. Small, consistent changes are more effective long-term. {demographic}",
+                "Focus on creating healthy, sustainable habits such as eating mindfully, incorporating more plant foods, staying physically active, managing stress, getting enough sleep, and addressing emotional eating rather than pursuing rapid weight loss. {demographic}",
+                "Consider tracking your food intake and physical activity to identify patterns, set specific and realistic goals, incorporate both cardiovascular exercise and strength training, manage portion sizes, and celebrate non-scale victories. {demographic}"
             ],
             'special_diets': [
-                "When following a {context} diet, ensure you're meeting all nutritional requirements. {temporal}",
-                "Special diets should be planned carefully to avoid nutrient deficiencies. {temporal}",
-                "Consider consulting with a registered dietitian for personalized dietary advice. {temporal}"
-            ]
-        },
-        'exercise': {
-            'cardio': [
-                "Aim for at least 150 minutes of moderate cardio activity per week. {demographic}",
-                "Choose activities you enjoy like walking, swimming, or cycling. {demographic}",
-                "Start gradually and increase intensity as your fitness improves. {demographic}"
-            ],
-            'strength': [
-                "Include strength training 2-3 times per week for optimal health. {temporal}",
-                "Focus on major muscle groups and proper form during exercises. {temporal}",
-                "Allow adequate rest between strength training sessions. {temporal}"
-            ],
-            'flexibility': [
-                "Regular stretching can improve flexibility and reduce injury risk. {severity}",
-                "Consider incorporating yoga or other flexibility exercises into your routine. {severity}",
-                "Stretch major muscle groups daily, especially after exercise. {severity}"
-            ]
-        },
-        'sleep': {
-            'quality': [
-                "Good sleep quality involves both duration and consistency. {temporal}",
-                "Create a relaxing bedtime routine to improve sleep quality. {temporal}",
-                "Aim for 7-9 hours of uninterrupted sleep each night. {temporal}"
-            ],
-            'disorders': [
-                "Sleep disorders can significantly impact overall health. {severity} {history}",
-                "Common sleep disorders include insomnia, sleep apnea, and restless leg syndrome. {severity} {history}",
-                "Consider a sleep study if you experience persistent sleep issues. {severity} {history}"
-            ],
-            'habits': [
-                "Maintain consistent sleep and wake times, even on weekends. {temporal}",
-                "Avoid screens and caffeine close to bedtime. {temporal}",
-                "Create a sleep-friendly environment that's dark, quiet, and cool. {temporal}"
-            ]
-        },
-        'diabetes': {
-            'management': [
-                "Regular blood sugar monitoring is essential for diabetes management. {temporal}",
-                "Maintain a consistent meal schedule and balanced diet. {temporal}",
-                "Work with your healthcare team to develop an appropriate management plan. {temporal}"
-            ],
-            'symptoms': [
-                "Common diabetes symptoms include increased thirst, frequent urination, and fatigue. {severity} {history}",
-                "Watch for signs like slow-healing wounds and blurred vision. {severity} {history}",
-                "Monitor for sudden changes in blood sugar levels. {severity} {history}"
-            ],
-            'prevention': [
-                "Maintain a healthy weight and regular physical activity to prevent type 2 diabetes. {demographic}",
-                "Choose foods with a low glycemic index and limit processed sugars. {demographic}",
-                "Regular health screenings can help detect pre-diabetes early. {demographic}"
+                "When following a {context} diet, ensure you're meeting all nutritional requirements by consulting with a healthcare provider or registered dietitian who can help identify potential nutrient gaps and recommend appropriate supplements if needed. {temporal}",
+                "Special diets should be planned carefully to avoid nutrient deficiencies. Focus on maximizing food variety within the diet's parameters and consider working with a nutrition professional to ensure all nutrient needs are met. {temporal}",
+                "Consider consulting with a registered dietitian for personalized dietary advice when following special diets to ensure nutritional adequacy, sustainability, and appropriateness for your specific health conditions and goals. {temporal}"
             ]
         },
         'heart_health': {
             'prevention': [
-                "Maintain healthy blood pressure and cholesterol levels through diet and exercise. {temporal}",
-                "Regular cardiovascular exercise supports heart health. {temporal}",
-                "Avoid smoking and limit alcohol consumption for heart health. {temporal}"
+                "Maintain heart health by consuming a diet rich in fruits, vegetables, whole grains, and healthy fats while limiting sodium, saturated fats, and added sugars. Regular physical activity, stress management, and avoiding smoking are also essential. {temporal}",
+                "Regular cardiovascular exercise (at least 150 minutes of moderate activity weekly), strength training, maintaining healthy blood pressure and cholesterol levels, and avoiding tobacco products all support long-term heart health. {temporal}",
+                "Prevent heart disease by managing key risk factors including high blood pressure, high cholesterol, diabetes, obesity, physical inactivity, poor diet, excessive alcohol consumption, and tobacco use. Regular check-ups help detect problems early. {temporal}"
             ],
             'symptoms': [
-                "Watch for signs like chest pain, shortness of breath, or irregular heartbeat. {severity} {history}",
-                "Heart attack symptoms can include arm pain and jaw discomfort. {severity} {history}",
-                "Some heart conditions may cause fatigue or dizziness. {severity} {history}"
+                "Watch for heart problem warning signs like chest pain/discomfort (which may feel like pressure, squeezing, or fullness), shortness of breath, pain/discomfort in the arms, back, neck, jaw or stomach, and cold sweats, nausea, or lightheadedness. {severity} {history}",
+                "Heart attack symptoms often include chest discomfort (pressure, squeezing, fullness), discomfort in other upper body areas, shortness of breath, and sometimes cold sweat, nausea, or lightheadedness. Women may experience less obvious symptoms. {severity} {history}",
+                "Some heart conditions may cause fatigue, dizziness, irregular heartbeat (palpitations), swelling in the legs/ankles/feet, persistent cough, or shortness of breath during daily activities or when lying down. {severity} {history}"
             ],
             'risk_factors': [
-                "Key risk factors include high blood pressure, high cholesterol, and smoking. {demographic}",
-                "Family history and age can affect heart disease risk. {demographic}",
-                "Lifestyle choices significantly impact heart health. {demographic}"
+                "Key heart disease risk factors include high blood pressure, high cholesterol, diabetes, obesity, physical inactivity, unhealthy diet, smoking, excessive alcohol consumption, stress, and family history. Many factors can be modified through lifestyle changes. {demographic}",
+                "Family history, age, and sex affect heart disease risk (men generally develop it earlier than women), but modifiable factors like smoking, diet, physical activity, and managing conditions like hypertension have a significant impact. {demographic}",
+                "Lifestyle choices significantly impact heart health. Managing stress, getting adequate sleep, maintaining a healthy weight, exercising regularly, eating a heart-healthy diet, and avoiding tobacco can substantially reduce heart disease risk. {demographic}"
+            ]
+        },
+        'exercise': {
+            'cardio': [
+                "Aim for at least 150 minutes of moderate cardio activity (like brisk walking) or 75 minutes of vigorous activity (like running) per week, spread across multiple days for optimal cardiovascular benefits. {demographic}",
+                "Choose activities you enjoy such as walking, swimming, cycling, dancing, or group fitness classes to maintain motivation and consistency with your cardiovascular exercise routine. {demographic}",
+                "Start gradually with 10-15 minute sessions if you're new to cardio exercise and increase duration and intensity as your fitness improves, monitoring how your body responds and adjusting accordingly. {demographic}"
+            ],
+            'strength': [
+                "Include strength training 2-3 times per week, targeting all major muscle groups and allowing at least 48 hours of recovery between sessions for a specific muscle group. Progressive overload is key to continued improvements. {temporal}",
+                "Focus on major muscle groups and proper form during exercises, starting with lighter weights and mastering technique before increasing resistance. Compound movements like squats, deadlifts, and push-ups provide efficient full-body benefits. {temporal}",
+                "Allow adequate rest between strength training sessions as muscle growth and repair occurs during recovery. Ensure proper nutrition with adequate protein intake to support muscle development and recovery. {temporal}"
+            ],
+            'flexibility': [
+                "Regular stretching after warming up muscles can improve flexibility, range of motion, and posture while reducing injury risk and muscle tension. Hold static stretches for 15-30 seconds without bouncing. {severity}",
+                "Consider incorporating yoga, Pilates, or tai chi into your routine to improve flexibility while also enhancing strength, balance, and mind-body awareness. These practices offer comprehensive physical and mental benefits. {severity}",
+                "Stretch major muscle groups daily, especially after exercise when muscles are warm. Focus on areas of tightness particular to your body and activities, and remember that consistency is more important than intensity. {severity}"
+            ]
+        },
+        'sleep': {
+            'quality': [
+                "Good sleep quality involves both sufficient duration (7-9 hours for most adults) and consistency in sleep timing, with minimal nighttime awakenings and feeling refreshed upon waking. {temporal}",
+                "Create a relaxing bedtime routine to improve sleep quality, such as disconnecting from screens 1-2 hours before bed, engaging in calming activities like reading or gentle stretching, and keeping your bedroom cool, dark, and quiet. {temporal}",
+                "Aim for 7-9 hours of uninterrupted sleep each night, maintaining consistent sleep and wake times even on weekends to support your body's natural circadian rhythm and hormone regulation. {temporal}"
+            ],
+            'disorders': [
+                "Sleep disorders can significantly impact overall health, affecting cardiovascular health, immune function, cognitive performance, mental health, and metabolic processes. Early identification and treatment are important. {severity} {history}",
+                "Common sleep disorders include insomnia (difficulty falling or staying asleep), sleep apnea (breathing interruptions during sleep), restless leg syndrome (uncomfortable sensations causing an urge to move the legs), and narcolepsy (excessive daytime sleepiness). {severity} {history}",
+                "Consider a sleep study if you experience persistent sleep issues like excessive daytime sleepiness, loud snoring, gasping or choking during sleep, significant difficulty falling or staying asleep, or unusual behaviors during sleep. {severity} {history}"
+            ],
+            'habits': [
+                "Maintain consistent sleep and wake times, even on weekends, to help regulate your body's internal clock. This consistency reinforces your sleep-wake cycle and can help you fall asleep more quickly and sleep more soundly. {temporal}",
+                "Avoid screens (phones, tablets, computers, TV) at least 30-60 minutes before bedtime as the blue light can suppress melatonin production. Also limit caffeine, alcohol, and large meals close to bedtime as they can disrupt sleep quality. {temporal}",
+                "Create a sleep-friendly environment that's dark (use blackout curtains if needed), quiet (consider earplugs or white noise if necessary), and cool (around 65°F/18°C). Your mattress, pillows, and bedding should also provide comfort and support. {temporal}"
             ]
         }
     }
@@ -497,7 +682,12 @@ def generate_fallback_response(query):
         base_response = random.choice(response_templates)
     else:
         # Fallback to general response if topic/subtopic not found
-        base_response = "I understand you're asking about {topic}. {general_advice}"
+        general_responses = [
+            "I understand you're asking about {topic}. While I don't have specific information on this exact query, I recommend consulting with a healthcare professional for personalized advice tailored to your situation.",
+            "Your question about {topic} is important. For the most accurate and personalized information, I'd recommend discussing this with a healthcare provider who can consider your complete medical history and specific circumstances.",
+            "Regarding your {topic} question, the best approach would be to consult with a qualified healthcare professional who can provide guidance specific to your individual health needs and circumstances."
+        ]
+        base_response = random.choice(general_responses)
     
     # Format response with context
     severity_text = f"The symptoms you describe are {context['severity']}" if context['severity'] else ""
@@ -519,11 +709,12 @@ def generate_fallback_response(query):
         demographic=demographic_text,
         temporal=temporal_text,
         topic=main_topic if main_topic else "health",
-        general_advice="I recommend consulting with a healthcare professional for personalized advice."
+        general_advice="I recommend consulting with a healthcare professional for personalized advice.",
+        context=context.get('demographic', '')
     )
     
     # Add a disclaimer
-    response += "\n\nPlease note: This information is for educational purposes only. Always consult with a healthcare professional for medical advice."
+    response += "\n\nPlease note: This information is for educational purposes only. Always consult with a healthcare professional for personalized medical advice."
     
     return response
 
@@ -658,32 +849,100 @@ def get_analytics_data():
         return None
 
 def extract_text_from_file(uploaded_file):
-    """Extract text from different file types"""
-    file_type = uploaded_file.name.split('.')[-1].lower()
-    
+    """Extract text content from uploaded files (TXT, PDF, DOCX)"""
     try:
+        file_type = uploaded_file.name.split('.')[-1].lower()
+        text_content = ""
+        
         if file_type == 'txt':
-            # For text files
-            return uploaded_file.getvalue().decode('utf-8')
+            # Text files
+            text_content = uploaded_file.getvalue().decode('utf-8')
         
         elif file_type == 'pdf':
-            # For PDF files
-            pdf_reader = PyPDF2.PdfReader(uploaded_file)
-            text = ""
-            for page_num in range(len(pdf_reader.pages)):
-                text += pdf_reader.pages[page_num].extract_text() + "\n"
-            return text
+            # PDF files
+            try:
+                pdf_reader = PyPDF2.PdfReader(uploaded_file)
+                for page_num in range(len(pdf_reader.pages)):
+                    page = pdf_reader.pages[page_num]
+                    text_content += page.extract_text() + "\n"
+            except Exception as e:
+                st.error(f"Error reading PDF: {str(e)}")
+                return "Could not extract text from the PDF file."
         
         elif file_type == 'docx':
-            # For DOCX files
-            doc = docx.Document(uploaded_file)
-            return "\n".join([paragraph.text for paragraph in doc.paragraphs])
+            # Word documents
+            try:
+                doc = docx.Document(uploaded_file)
+                for para in doc.paragraphs:
+                    text_content += para.text + "\n"
+            except Exception as e:
+                st.error(f"Error reading DOCX: {str(e)}")
+                return "Could not extract text from the Word document."
         
         else:
-            return "Unsupported file type. Please upload a txt, pdf, or docx file."
-    
+            return "Unsupported file format. Please upload a TXT, PDF, or DOCX file."
+        
+        # Extract important medical keywords
+        medical_keywords = extract_medical_keywords(text_content)
+        
+        # Format the returned text
+        if len(text_content) > 1000:
+            summary = text_content[:1000] + "...\n\n"
+            if medical_keywords:
+                summary += "Key medical concepts detected: " + ", ".join(medical_keywords)
+            return summary
+        else:
+            if medical_keywords:
+                text_content += "\n\nKey medical concepts detected: " + ", ".join(medical_keywords)
+            return text_content
+            
     except Exception as e:
-        return f"Error extracting text from file: {str(e)}"
+        st.error(f"Error processing file: {str(e)}")
+        return "Error processing the uploaded file."
+
+def extract_medical_keywords(text):
+    """Extract important medical keywords and concepts from text"""
+    # List of common medical terms to look for
+    medical_terms = {
+        "conditions": ["diabetes", "hypertension", "asthma", "cancer", "stroke", "heart attack", 
+                      "alzheimer", "parkinson", "arthritis", "depression", "anxiety", "copd", 
+                      "pneumonia", "bronchitis", "influenza", "covid", "obesity", "insomnia"],
+        
+        "symptoms": ["pain", "fatigue", "fever", "cough", "headache", "nausea", "vomiting", 
+                    "dizziness", "shortness of breath", "chest pain", "abdominal pain", 
+                    "rash", "swelling", "inflammation", "bleeding", "numbness", "tingling"],
+        
+        "treatments": ["surgery", "medication", "therapy", "antibiotics", "vaccine", "chemotherapy", 
+                      "radiation", "transplant", "dialysis", "physical therapy", "immunotherapy"],
+        
+        "vitals": ["blood pressure", "heart rate", "pulse", "temperature", "respiratory rate", 
+                  "oxygen saturation", "glucose", "cholesterol"]
+    }
+    
+    found_terms = []
+    
+    # Clean and lowercase the text
+    text_lower = text.lower()
+    
+    # Look for medical terms in the text
+    for category, terms in medical_terms.items():
+        for term in terms:
+            if term in text_lower:
+                found_terms.append(term)
+    
+    # Look for measurements and values (e.g., "120/80 mmHg", "98.6°F")
+    bp_matches = re.findall(r'\b\d{2,3}/\d{2,3}\b', text)  # Blood pressure format
+    temp_matches = re.findall(r'\b\d{2}\.\d°[FC]\b|\b\d{2,3}°[FC]\b', text)  # Temperature format
+    
+    # Add found measurements
+    for match in bp_matches:
+        found_terms.append(f"blood pressure {match}")
+    
+    for match in temp_matches:
+        found_terms.append(f"temperature {match}")
+    
+    # Return unique terms
+    return list(set(found_terms))
 
 def toggle_theme():
     """Toggle between light and dark themes"""
@@ -757,33 +1016,43 @@ def main():
             if i not in st.session_state.feedback_given:
                 col1, col2, col3 = st.columns([1, 1, 10])
                 with col1:
-                    if st.button("👍", key=f"like_{i}"):
+                    if st.button("👍", key=f"like_{i}", help="Helpful response"):
                         st.session_state.feedback_given[i] = "positive"
                         log_interaction(
                             st.session_state.messages[i-1]["content"] if i > 0 else "", 
                             message["content"], 
                             "positive"
                         )
-                        st.success("Thank you for your feedback!")
+                        st.markdown(
+                            """
+                            <style>
+                            [data-testid="baseButton-secondary"]:has(div:contains("👍")) {
+                                color: #28a745 !important;
+                            }
+                            </style>
+                            """,
+                            unsafe_allow_html=True
+                        )
                         st.rerun()
                 with col2:
-                    if st.button("👎", key=f"dislike_{i}"):
+                    if st.button("👎", key=f"dislike_{i}", help="Unhelpful response"):
                         st.session_state.feedback_given[i] = "negative"
                         log_interaction(
                             st.session_state.messages[i-1]["content"] if i > 0 else "", 
                             message["content"], 
                             "negative"
                         )
-                        
-                        # Add a report option for negative feedback
-                        report_reason = st.text_input(
-                            "What was wrong with this response?", 
-                            key=f"report_{i}"
+                        st.markdown(
+                            """
+                            <style>
+                            [data-testid="baseButton-secondary"]:has(div:contains("👎")) {
+                                color: #dc3545 !important;
+                            }
+                            </style>
+                            """,
+                            unsafe_allow_html=True
                         )
-                        if report_reason:
-                            st.info("Thank you for helping us improve!")
-                            st.session_state.feedback_given[i] = f"negative: {report_reason}"
-                            st.rerun()
+                        st.rerun()
     
     # Get voice input if button was clicked
     voice_text = None

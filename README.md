@@ -9,12 +9,14 @@ A modern, interactive healthcare chatbot powered by AI that provides healthcare 
 - 🤖 AI-powered healthcare information using HuggingFace's models with fallback capabilities
 - 💬 Interactive chat interface with bubble styling and session memory
 - 🎙️ Voice input capability for hands-free interaction
-- 📁 File upload to provide context from health documents
+- 📁 File upload to provide context from health documents with medical keyword extraction
 - 🌓 Light/dark theme toggle for comfortable viewing
 - 📊 Optional usage analytics to track interactions
 - 🚨 Emergency keyword detection with appropriate warnings
 - 👍👎 User feedback collection to improve responses
 - 📤 Export chat history for record keeping
+- 🏥 Enhanced medical knowledge base for offline responses
+- 🔄 Multi-model fallback system for reliable responses
 
 ## Quick Start
 
@@ -39,12 +41,13 @@ A modern, interactive healthcare chatbot powered by AI that provides healthcare 
 3. Create a `.env` file in the project root directory with your configuration:
    ```env
    HUGGINGFACE_API_KEY=your_huggingface_api_key_here
-   MODEL_NAME=google/flan-t5-base
-   MAX_TOKENS=150
-   TEMPERATURE=0.7
+   MODEL_NAME=microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract
+   BACKUP_MODEL=google/flan-t5-base
+   MAX_TOKENS=350
+   TEMPERATURE=0.4
    APP_TITLE=AI Healthcare Assistant
    DISCLAIMER=⚠️ Always consult a healthcare provider for medical advice.
-   ENABLE_ANALYTICS=false
+   ENABLE_ANALYTICS=true
    ANALYTICS_FILE=usage_analytics.json
    ```
    
@@ -72,8 +75,9 @@ The application will be available at `http://localhost:8501` in your web browser
 3. Your speech will be converted to text and added to the input field
 
 ### Document Upload
-1. Use the file uploader in the sidebar to upload health-related documents
+1. Use the file uploader in the sidebar to upload health-related documents (PDF, DOCX, TXT)
 2. The content of the documents will be used to provide context for the AI's responses
+3. The system will automatically extract key medical concepts from your document to improve responses
 
 ### Export Chat
 1. Click the "📤 Export Chat" button in the sidebar
@@ -84,11 +88,15 @@ The application will be available at `http://localhost:8501` in your web browser
 
 ## Response Generation
 
-The application uses two methods for generating responses:
+The application uses multiple methods for generating responses:
 
-1. **HuggingFace Inference API** - If a HuggingFace API key is provided, the app will use the specified model to generate responses. This provides the most advanced and up-to-date responses.
+1. **Primary Model (BiomedNLP-PubMedBERT)** - If a HuggingFace API key is provided, the app will first try to use this specialized medical language model for generating accurate, medical-focused responses.
 
-2. **Fallback Response System** - If the HuggingFace API is unavailable or no API key is provided, the app will use a built-in rule-based system to generate responses for common healthcare topics. This ensures the app remains functional even without internet access or API keys.
+2. **Backup Model (Flan-T5)** - If the primary model is unavailable or times out, the system automatically falls back to this general-purpose model, which is optimized for conversation.
+
+3. **Enhanced Medical Knowledge Base** - All responses are augmented with specific medical information from our built-in knowledge base on topics like diabetes, hypertension, and asthma.
+
+4. **Rule-based Fallback System** - If both models are unavailable, the app will use a comprehensive rule-based system with detailed medical information to generate responses for common healthcare topics.
 
 ## Important Notes
 
@@ -105,7 +113,7 @@ If analytics are enabled in the `.env` file (`ENABLE_ANALYTICS=true`), the appli
 - Response lengths
 - User feedback
 
-This data is stored locally in the file specified by `ANALYTICS_FILE`.
+This data is stored locally in the file specified by `ANALYTICS_FILE` and can be visualized in the sidebar when analytics are enabled.
 
 ## Development
 
@@ -125,7 +133,18 @@ AI-Healthcare-Chatbot/
 - To add new features, modify the `app.py` file
 - To change the UI, adjust the CSS in the `get_chat_bubble_css()` function
 - To modify the AI behavior, update the system message in the `get_chatbot_response()` function
+- To expand the medical knowledge base, add more entries to the `MEDICAL_KNOWLEDGE` dictionary
 - To enhance the fallback system, add more rules to the `generate_fallback_response()` function
+
+## Recent Improvements
+
+- Added a specialized medical language model (BiomedNLP-PubMedBERT) for more accurate medical responses
+- Implemented a multi-model fallback system for better reliability
+- Enhanced the built-in medical knowledge base for comprehensive offline responses
+- Added medical keyword extraction from uploaded documents
+- Improved response quality with more detailed, evidence-based medical information
+- Optimized API calls with faster timeouts and better error handling
+- Enhanced analytics capabilities for tracking system performance
 
 ## Deployment Options
 
