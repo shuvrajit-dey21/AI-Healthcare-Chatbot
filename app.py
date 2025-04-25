@@ -431,15 +431,15 @@ def analyze_query(query):
     for topic, data in topics.items():
         for keyword in data['keywords']:
             if keyword in query:
-                main_topic = topic
+            main_topic = topic
                 
                 # Check for subtopics if main topic is identified
                 if main_topic:
-                    for sub, keywords in data['subtopics'].items():
+            for sub, keywords in data['subtopics'].items():
                         for keyword in keywords:
                             if keyword in query:
-                                subtopic = sub
-                                break
+                    subtopic = sub
+                    break
                         if subtopic:
                             break
                 break
@@ -538,7 +538,7 @@ Provide a detailed medical response:"""
                         return enhance_medical_response(formatted_response, content)
             
             st.warning("Models unavailable. Using built-in knowledge system.")
-        else:
+                else:
             st.info("No API key provided. Using built-in healthcare knowledge system.")
         
         # Fallback to rule-based system
@@ -851,9 +851,9 @@ def get_analytics_data():
 def extract_text_from_file(uploaded_file):
     """Extract text content from uploaded files (TXT, PDF, DOCX)"""
     try:
-        file_type = uploaded_file.name.split('.')[-1].lower()
+    file_type = uploaded_file.name.split('.')[-1].lower()
         text_content = ""
-        
+    
         if file_type == 'txt':
             # Text files
             text_content = uploaded_file.getvalue().decode('utf-8')
@@ -861,8 +861,8 @@ def extract_text_from_file(uploaded_file):
         elif file_type == 'pdf':
             # PDF files
             try:
-                pdf_reader = PyPDF2.PdfReader(uploaded_file)
-                for page_num in range(len(pdf_reader.pages)):
+            pdf_reader = PyPDF2.PdfReader(uploaded_file)
+            for page_num in range(len(pdf_reader.pages)):
                     page = pdf_reader.pages[page_num]
                     text_content += page.extract_text() + "\n"
             except Exception as e:
@@ -872,7 +872,7 @@ def extract_text_from_file(uploaded_file):
         elif file_type == 'docx':
             # Word documents
             try:
-                doc = docx.Document(uploaded_file)
+            doc = docx.Document(uploaded_file)
                 for para in doc.paragraphs:
                     text_content += para.text + "\n"
             except Exception as e:
@@ -895,7 +895,7 @@ def extract_text_from_file(uploaded_file):
             if medical_keywords:
                 text_content += "\n\nKey medical concepts detected: " + ", ".join(medical_keywords)
             return text_content
-            
+    
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")
         return "Error processing the uploaded file."
@@ -1052,7 +1052,7 @@ def main():
                             """,
                             unsafe_allow_html=True
                         )
-                        st.rerun()
+                            st.rerun()
     
     # Get voice input if button was clicked
     voice_text = None
